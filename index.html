@@ -27,6 +27,10 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
 .name{font-size:18px;font-weight:750;line-height:1.18}
 .waitbox{text-align:right;white-space:nowrap}
 .gonow{display:inline-block;background:#ff7a00;color:#fff;font-size:11px;font-weight:950;letter-spacing:.04em;padding:4px 7px;border-radius:999px;margin-bottom:5px}
+.trend{font-size:18px;font-weight:950;margin-right:5px}
+.trend.down{color:var(--green)}
+.trend.up{color:var(--red)}
+.trend.steady{color:var(--muted)}
 .wait{font-size:20px;font-weight:900;white-space:nowrap}
 .note{display:block;color:var(--muted);font-size:12px;font-weight:600;margin-top:4px}
 .error{background:#2a1114;border:1px solid #5c1e25;color:#ffb4bc;padding:13px;border-radius:14px;margin-top:14px}
@@ -193,14 +197,74 @@ function ageText(d){
   return `Updated ${mins} min ago`;
 }
 
+
+const TREND_KEY = "universalWaitTrendHistoryV1";
+
+function readTrendHistory(){
+  try { return JSON.parse(localStorage.getItem(TREND_KEY) || "{}"); }
+  catch(e) { return {}; }
+}
+
+function trendFor(r){
+  const wait = standbyWait(r);
+  if(wait === null) return null;
+
+  const history = readTrendHistory();
+  const key = `${current}:${norm(r.name)}`;
+  const samples = Array.isArray(history[key]) ? history[key] : [];
+  const now = Date.now();
+
+  // Aim for ~15 minutes ago. Require at least 10 minutes of separation,
+  // and ignore samples older than 30 minutes for the quick-glance trend.
+  const eligible = samples.filter(x =>
+    Number.isFinite(x.t) && Number.isFinite(x.wait) &&
+    now - x.t >= 10*60*1000 && now - x.t <= 30*60*1000
+  );
+  if(!eligible.length) return null;
+
+  const target = now - 15*60*1000;
+  eligible.sort((a,b) => Math.abs(a.t-target) - Math.abs(b.t-target));
+  const previous = eligible[0].wait;
+  const change = wait - previous;
+
+  if(change <= -10) return {symbol:"↓", cls:"down", label:`Falling ${Math.abs(change)} min`};
+  if(change >= 10) return {symbol:"↑", cls:"up", label:`Rising ${change} min`};
+  return {symbol:"→", cls:"steady", label:"Steady"};
+}
+
+function saveTrendSamples(rows, parkKey){
+  const history = readTrendHistory();
+  const now = Date.now();
+  const cutoff = now - 2*60*60*1000;
+
+  rows.forEach(r => {
+    const wait = standbyWait(r);
+    if(wait === null) return;
+    const key = `${parkKey}:${norm(r.name)}`;
+    const samples = Array.isArray(history[key]) ? history[key].filter(x => x.t >= cutoff) : [];
+
+    // Don't create duplicate samples during rapid manual refreshes.
+    const last = samples[samples.length-1];
+    if(!last || now - last.t >= 4*60*1000){
+      samples.push({t:now, wait});
+    }
+    history[key] = samples.slice(-30);
+  });
+
+  try { localStorage.setItem(TREND_KEY, JSON.stringify(history)); }
+  catch(e) {}
+}
+
 function rideHTML(r, favorite){
   const s = displayState(r);
+  const trend = trendFor(r);
   const lu = r.lastUpdated ? new Date(r.lastUpdated) : null;
   const fresh = lu && !isNaN(lu) ? `Updated ${lu.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}` : "";
+  const trendHTML = trend ? `<span class="trend ${trend.cls}" title="${trend.label}" aria-label="${trend.label}">${trend.symbol}</span>` : "";
   return `<div class="ride">
     <span class="dot" style="background:${s.c}"></span>
     <div class="name">${favorite ? '<span class="star">★</span>' : ''}${r.name}<span class="note">${fresh}</span></div>
-    <div class="waitbox">${s.goNow ? '<div class="gonow">🔥 GO NOW</div>' : ''}<div class="wait">${s.text}</div></div>
+    <div class="waitbox">${s.goNow ? '<div class="gonow">🔥 GO NOW</div>' : ''}<div class="wait">${trendHTML}${s.text}</div></div>
   </div>`;
 }
 
@@ -284,6 +348,7 @@ async function load(){
        <div class="section">ALL OTHER ATTRACTIONS</div>${others.map(r=>rideHTML(r,false)).join("")}`;
 
     document.getElementById("updated").textContent = `${park.name} • ${ageText(freshest(rows))}`;
+    saveTrendSamples(rows, parkKey);
   }catch(e){
     document.getElementById("updated").textContent = "Could not update";
     document.getElementById("error").innerHTML =
