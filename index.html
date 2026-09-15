@@ -12,7 +12,11 @@
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif}
 .app{max-width:720px;margin:auto;padding:calc(env(safe-area-inset-top) + 18px) 18px calc(env(safe-area-inset-bottom) + 28px)}
 h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
-.sub{color:var(--muted);font-size:14px;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.brand-logo{width:58px;height:58px;border-radius:14px;object-fit:cover;flex:0 0 58px}
+.brand-copy{min-width:0}
+.brand h1{margin:0;font-size:30px;line-height:1.05}
+.sub{color:var(--muted);font-size:14px;margin-top:7px}
 .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#0d1117;padding:6px;border-radius:16px;position:sticky;top:8px;z-index:5}
 .tab{border:0;background:transparent;color:#aab3bf;font-weight:800;font-size:16px;padding:13px 8px;border-radius:12px}
 .tab.active{background:var(--accent);color:white}
@@ -48,8 +52,13 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
 </head>
 <body>
 <div class="app">
-  <h1>Universal Waits</h1>
-  <div class="sub">Tim's quick-glance board</div>
+  <div class="brand">
+    <img class="brand-logo" src="apple-touch-icon.png" alt="">
+    <div class="brand-copy">
+      <h1>Universal Waits</h1>
+      <div class="sub">Tim's quick-glance board</div>
+    </div>
+  </div>
 
   <div class="tabs">
     <button class="tab active" data-park="usf">Universal Studios</button>
