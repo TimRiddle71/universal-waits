@@ -33,7 +33,18 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
 .updated{font-size:13px;color:var(--muted)}
 .refresh{border:1px solid var(--line);background:var(--card);color:white;border-radius:12px;padding:9px 12px;font-weight:700}
 .section{font-size:20px;color:#b8c0cb;font-weight:900;letter-spacing:.12em;margin:20px 3px 9px}
-.ride{display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:12px;padding:16px 15px;background:var(--card);border:1px solid var(--line);border-radius:16px;margin:8px 0}
+
+.ridewrap{margin:8px 0}
+.ridewrap .ride{margin:0;cursor:pointer}
+.ridewrap .ride:active{transform:scale(.995)}
+.history{display:none;background:#0b0f14;border:1px solid var(--line);border-top:0;border-radius:0 0 16px 16px;padding:10px 12px 12px}
+.ridewrap.open .ride{border-radius:16px 16px 0 0}
+.ridewrap.open .history{display:block}
+.history-title{font-size:11px;color:var(--muted);font-weight:800;margin-bottom:6px}
+.history svg{display:block;width:100%;height:82px;overflow:visible}
+.history-empty{font-size:12px;color:var(--muted);padding:8px 2px}
+.history-range{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:4px}
+.ride{display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:12px;padding:16px 15px;background:var(--card);border:1px solid var(--line);border-radius:16px;margin:0}
 .dot{width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
 .name{font-size:18px;font-weight:750;line-height:1.18}
 .waitbox{text-align:right;white-space:nowrap}
@@ -400,6 +411,56 @@ function updateStatusHistory(rows, parkKey){
   catch(e) {}
 }
 
+
+function historySamplesFor(r){
+  const history = readTrendHistory();
+  const key = `${current}:${norm(r.name)}`;
+  const now = Date.now();
+  const cutoff = now - 2*60*60*1000;
+  return (Array.isArray(history[key]) ? history[key] : [])
+    .filter(x => Number.isFinite(x.t) && Number.isFinite(x.wait) && x.t >= cutoff)
+    .sort((a,b) => a.t - b.t);
+}
+
+function miniHistoryHTML(r){
+  const samples = historySamplesFor(r);
+  if(samples.length < 2){
+    return `<div class="history-empty">Collecting wait history… check back after another refresh.</div>`;
+  }
+
+  const W = 320, H = 72, PADX = 6, PADY = 7;
+  const waits = samples.map(x => x.wait);
+  let min = Math.min(...waits), max = Math.max(...waits);
+  if(min === max){ min = Math.max(0, min - 5); max += 5; }
+
+  const t0 = samples[0].t, t1 = samples[samples.length-1].t;
+  const span = Math.max(1, t1 - t0);
+  const x = t => PADX + ((t - t0) / span) * (W - PADX*2);
+  const y = w => PADY + (1 - ((w - min) / (max - min))) * (H - PADY*2);
+  const points = samples.map(s => `${x(s.t).toFixed(1)},${y(s.wait).toFixed(1)}`).join(" ");
+  const last = samples[samples.length-1];
+
+  const fmt = t => new Date(t).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+
+  return `<div class="history-title">LAST 2 HOURS · ${samples.length} SAMPLES · ${last.wait} MIN NOW</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Wait history for ${r.name}">
+      <line x1="${PADX}" y1="${H-PADY}" x2="${W-PADX}" y2="${H-PADY}" stroke="#242a33" stroke-width="1"/>
+      <polyline points="${points}" fill="none" stroke="#7fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      ${samples.map(s => `<circle cx="${x(s.t).toFixed(1)}" cy="${y(s.wait).toFixed(1)}" r="2.8" fill="#f7f8fa"/>`).join("")}
+    </svg>
+    <div class="history-range"><span>${fmt(t0)}</span><span>${min}–${max} min</span><span>${fmt(t1)}</span></div>`;
+}
+
+function toggleRideHistory(el){
+  const wrap = el.closest(".ridewrap");
+  if(!wrap) return;
+  const opening = !wrap.classList.contains("open");
+  document.querySelectorAll(".ridewrap.open").forEach(x => {
+    if(x !== wrap) x.classList.remove("open");
+  });
+  wrap.classList.toggle("open", opening);
+}
+
 function rideHTML(r, favorite){
   const s = displayState(r);
   const trend = trendFor(r);
@@ -408,10 +469,13 @@ function rideHTML(r, favorite){
   const fresh = lu && !isNaN(lu) ? `Updated ${lu.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}` : "";
   const trendHTML = trend ? `<span class="trend ${trend.cls}" title="${trend.label}" aria-label="${trend.label}">${trend.symbol}</span>` : "";
   const intelHTML = intel ? `<span class="statusintel ${intel.cls}">${intel.text}</span>` : "";
-  return `<div class="ride">
-    <span class="dot" style="background:${s.c}"></span>
-    <div class="name">${favorite ? '<span class="star">★</span>' : ''}${r.name}<span class="note">${fresh}</span>${intelHTML}</div>
-    <div class="waitbox">${s.goNow ? '<div class="gonow">🔥 GO NOW</div>' : ''}<div class="wait">${trendHTML}${s.text}</div></div>
+  return `<div class="ridewrap">
+    <div class="ride" onclick="toggleRideHistory(this)" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRideHistory(this)}">
+      <span class="dot" style="background:${s.c}"></span>
+      <div class="name">${favorite ? '<span class="star">★</span>' : ''}${r.name}<span class="note">${fresh}</span>${intelHTML}</div>
+      <div class="waitbox">${s.goNow ? '<div class="gonow">🔥 GO NOW</div>' : ''}<div class="wait">${trendHTML}${s.text}</div></div>
+    </div>
+    <div class="history">${miniHistoryHTML(r)}</div>
   </div>`;
 }
 
