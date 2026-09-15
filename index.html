@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#05070a">
 <title>Tim's Universal Waits</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png">  
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
 :root{color-scheme:dark;--bg:#05070a;--card:#11151b;--line:#242a33;--muted:#9aa4b2;--text:#f7f8fa;--green:#22c55e;--yellow:#fbbf24;--red:#ef4444;--gray:#6b7280;--accent:#2f7df4}
 *{box-sizing:border-box}
@@ -17,6 +17,8 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
 .tab{border:0;background:transparent;color:#aab3bf;font-weight:800;font-size:16px;padding:13px 8px;border-radius:12px}
 .tab.active{background:var(--accent);color:white}
 .toolbar{display:flex;justify-content:space-between;align-items:center;margin:16px 2px 10px;gap:10px}
+.hours{margin:16px 2px 0;font-size:16px;font-weight:850;line-height:1.25}
+.hours .detail{display:block;color:var(--muted);font-size:13px;font-weight:650;margin-top:4px}
 .updated{font-size:13px;color:var(--muted)}
 .refresh{border:1px solid var(--line);background:var(--card);color:white;border-radius:12px;padding:9px 12px;font-weight:700}
 .section{font-size:20px;color:#b8c0cb;font-weight:900;letter-spacing:.12em;margin:20px 3px 9px}
@@ -37,9 +39,11 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
   <div class="sub">Tim's quick-glance board</div>
 
   <div class="tabs">
-  <button class="tab active" data-park="usf">Universal Studios</button>
-  <button class="tab" data-park="ioa">Islands of Adventure</button>
+    <button class="tab active" data-park="usf">Universal Studios</button>
+    <button class="tab" data-park="ioa">Islands of Adventure</button>
   </div>
+
+  <div id="hours" class="hours">Loading today’s park hours…</div>
 
   <div class="toolbar">
     <div id="updated" class="updated">Loading live waits…</div>
@@ -83,6 +87,54 @@ const PARKS = {
   }
 };
 
+
+// Historical posted-wait baselines (minutes). These are used only to judge
+// whether a live wait is good/normal/high FOR THAT RIDE.
+const WAIT_BASELINES = {
+  // Islands of Adventure — Queue-Times all-time averages
+  "hagrids magical creatures motorbike adventure": 95,
+  "jurassic world velocicoaster": 56,
+  "skull island reign of kong": 35,
+  "flight of the hippogriff": 34,
+  "harry potter and the forbidden journey": 32,
+  "pteranodon flyers": 32,
+  "the incredible hulk coaster": 32,
+  "the amazing adventures of spider man": 29,
+  "dudley do rights ripsaw falls": 27,
+  "hogwarts express hogsmeade station": 22,
+  "jurassic park river adventure": 22,
+  "the high in the sky seuss trolley train ride": 20,
+  "doctor dooms fearfall": 15,
+  "popeye blutos bilge rat barges": 14,
+  "one fish two fish red fish blue fish": 13,
+  "ollivanders experience in hogsmeade": 12,
+  "the cat in the hat": 9,
+  "caro seuss el": 6,
+  "storm force accelatron": 6,
+
+  // Universal Studios — historical/current averages for the rides Tim cares about
+  "harry potter and the escape from gringotts": 46,
+  "revenge of the mummy": 31,
+  "despicable me minion mayhem": 32,
+  "transformers the ride 3d": 29,
+  "et adventure": 24,
+  "hogwarts express kings cross station": 24,
+  "men in black alien attack": 21
+};
+
+function round5(n){ return Math.max(5, Math.round(n / 5) * 5); }
+
+function smartThresholds(name){
+  const base = WAIT_BASELINES[norm(name)];
+  if(!base) return null;
+  // Green = meaningfully better than normal; red = meaningfully worse.
+  return {
+    base,
+    good: round5(base * 0.75),
+    high: round5(base * 1.35)
+  };
+}
+
 let current = "usf";
 let timer;
 
@@ -109,7 +161,15 @@ function standbyWait(r){
 function displayState(r){
   const status = String(r.status || "").toUpperCase();
   const wait = standbyWait(r);
-  if (status === "OPERATING" && wait !== null) return {text:`${wait} min`, c: wait <= 25 ? "var(--green)" : wait <= 45 ? "var(--yellow)" : "var(--red)", rank:0};
+  if (status === "OPERATING" && wait !== null) {
+    const t = smartThresholds(r.name);
+    if(t){
+      const c = wait <= t.good ? "var(--green)" : wait >= t.high ? "var(--red)" : "var(--yellow)";
+      return {text:`${wait} min`, c, rank:0};
+    }
+    // Fallback only for attractions without a historical baseline yet.
+    return {text:`${wait} min`, c: wait <= 25 ? "var(--green)" : wait <= 45 ? "var(--yellow)" : "var(--red)", rank:0};
+  }
   if (status === "DOWN") return {text:"DOWN", c:"var(--red)", rank:2};
   if (status === "REFURBISHMENT") return {text:"REFURB", c:"var(--gray)", rank:4};
   if (status === "CLOSED") return {text:"CLOSED", c:"var(--gray)", rank:3};
@@ -140,8 +200,60 @@ function rideHTML(r, favorite){
   </div>`;
 }
 
+
+function orlandoDateKey(){
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone:"America/New_York", year:"numeric", month:"2-digit", day:"2-digit"
+  }).formatToParts(new Date());
+  const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+function formatOrlandoTime(iso){
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone:"America/New_York", hour:"numeric", minute:"2-digit"
+  }).format(new Date(iso));
+}
+
+function durationText(ms){
+  const total = Math.max(0, Math.ceil(ms/60000));
+  const h = Math.floor(total/60), m = total % 60;
+  if(h && m) return `${h} hr ${m} min`;
+  if(h) return `${h} hr`;
+  return `${m} min`;
+}
+
+async function loadHours(parkKey){
+  const park = PARKS[parkKey];
+  const el = document.getElementById("hours");
+  try{
+    const res = await fetch(`https://api.themeparks.wiki/v1/entity/${park.id}/schedule`, {cache:"no-store"});
+    if(!res.ok) throw new Error("schedule unavailable");
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (data.schedule || []);
+    const today = orlandoDateKey();
+    const s = rows.find(x => x.date === today && String(x.type).toUpperCase() === "OPERATING")
+           || rows.find(x => x.date === today && x.openingTime && x.closingTime);
+    if(current !== parkKey) return;
+    if(!s){
+      el.innerHTML = `Park hours unavailable<span class="detail">No operating schedule found for today</span>`;
+      return;
+    }
+    const now=Date.now(), open=Date.parse(s.openingTime), close=Date.parse(s.closingTime);
+    let headline;
+    if(now < open) headline = `🕐 Opens in ${durationText(open-now)}`;
+    else if(now < close) headline = `🕐 Closes in ${durationText(close-now)}`;
+    else headline = "🕐 Closed for today";
+    el.innerHTML = `${headline}<span class="detail">Today ${formatOrlandoTime(s.openingTime)} – ${formatOrlandoTime(s.closingTime)}</span>`;
+  }catch(e){
+    if(current === parkKey) el.innerHTML = `Park hours unavailable<span class="detail">Wait times still work normally</span>`;
+  }
+}
+
 async function load(){
-  const park = PARKS[current];
+  const parkKey = current;
+  const park = PARKS[parkKey];
+  loadHours(parkKey);
   document.getElementById("error").innerHTML = "";
   document.getElementById("updated").textContent = "Loading live waits…";
   try{
