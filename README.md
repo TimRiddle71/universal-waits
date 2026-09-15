@@ -49,7 +49,7 @@ The official Universal Orlando app has a ton of useful information, but sometime
 
 Universal Waits gives me that answer immediately without digging through menus or maps.
 
-Built for my Universal Orlando trips — especially those mornings when I'd rather be drinking coffee in Diagon Alley than staring at my phone.
+Built for my Universal Orlando trips.
 
 ## 📡 Wait-Time Data
 
