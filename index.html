@@ -76,8 +76,8 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
     <button class="tab" data-park="ioa">Islands of Adventure</button>
   </div>
 
+  <div id="hours" class="hours">Loading today’s park hours…</div>
   <div id="bestbet"></div>
-    <div id="hours" class="hours">Loading today’s park hours…</div>
 
   <div class="toolbar">
     <div id="updated" class="updated">Loading live waits…</div>
@@ -520,9 +520,9 @@ async function loadHours(parkKey){
     }
     const now=Date.now(), open=Date.parse(s.openingTime), close=Date.parse(s.closingTime);
     let headline;
-    if(now < open) headline = `🕐 Opens in ${durationText(open-now)}`;
-    else if(now < close) headline = `🕐 Closes in ${durationText(close-now)}`;
-    else headline = "🕐 Closed for today";
+    if(now < open) headline = `🕐 ${park.name} opens in ${durationText(open-now)}`;
+    else if(now < close) headline = `🕐 ${park.name} closes in ${durationText(close-now)}`;
+    else headline = `🕐 ${park.name} is closed for today`;
     el.innerHTML = `${headline}<span class="detail">Today ${formatOrlandoTime(s.openingTime)} – ${formatOrlandoTime(s.closingTime)}</span>`;
   }catch(e){
     if(current === parkKey) el.innerHTML = `Park hours unavailable<span class="detail">Wait times still work normally</span>`;
