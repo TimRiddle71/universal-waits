@@ -25,6 +25,8 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
 .ride{display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:12px;padding:16px 15px;background:var(--card);border:1px solid var(--line);border-radius:16px;margin:8px 0}
 .dot{width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
 .name{font-size:18px;font-weight:750;line-height:1.18}
+.waitbox{text-align:right;white-space:nowrap}
+.gonow{display:inline-block;background:#ff7a00;color:#fff;font-size:11px;font-weight:950;letter-spacing:.04em;padding:4px 7px;border-radius:999px;margin-bottom:5px}
 .wait{font-size:20px;font-weight:900;white-space:nowrap}
 .note{display:block;color:var(--muted);font-size:12px;font-weight:600;margin-top:4px}
 .error{background:#2a1114;border:1px solid #5c1e25;color:#ffb4bc;padding:13px;border-radius:14px;margin-top:14px}
@@ -128,10 +130,12 @@ function smartThresholds(name){
   const base = WAIT_BASELINES[norm(name)];
   if(!base) return null;
   // Green = meaningfully better than normal; red = meaningfully worse.
+  // GO NOW is deliberately rarer: at least 40% below the historical baseline.
   return {
     base,
     good: round5(base * 0.75),
-    high: round5(base * 1.35)
+    high: round5(base * 1.35),
+    goNow: base * 0.60
   };
 }
 
@@ -165,7 +169,7 @@ function displayState(r){
     const t = smartThresholds(r.name);
     if(t){
       const c = wait <= t.good ? "var(--green)" : wait >= t.high ? "var(--red)" : "var(--yellow)";
-      return {text:`${wait} min`, c, rank:0};
+      return {text:`${wait} min`, c, rank:0, goNow: wait <= t.goNow};
     }
     // Fallback only for attractions without a historical baseline yet.
     return {text:`${wait} min`, c: wait <= 25 ? "var(--green)" : wait <= 45 ? "var(--yellow)" : "var(--red)", rank:0};
@@ -196,7 +200,7 @@ function rideHTML(r, favorite){
   return `<div class="ride">
     <span class="dot" style="background:${s.c}"></span>
     <div class="name">${favorite ? '<span class="star">★</span>' : ''}${r.name}<span class="note">${fresh}</span></div>
-    <div class="wait">${s.text}</div>
+    <div class="waitbox">${s.goNow ? '<div class="gonow">🔥 GO NOW</div>' : ''}<div class="wait">${s.text}</div></div>
   </div>`;
 }
 
