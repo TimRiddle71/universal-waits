@@ -18,6 +18,13 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
 .tab.active{background:var(--accent);color:white}
 .toolbar{display:flex;justify-content:space-between;align-items:center;margin:16px 2px 10px;gap:10px}
 .hours{margin:16px 2px 0;font-size:16px;font-weight:850;line-height:1.25}
+
+.bestbet{background:linear-gradient(135deg,#111923,#11151b);border:1px solid #2f7df4;border-radius:18px;padding:14px 15px;margin:12px 0 14px}
+.bestbet-kicker{font-size:12px;font-weight:950;letter-spacing:.12em;color:#7fb0ff;margin-bottom:6px}
+.bestbet-name{font-size:18px;font-weight:950;line-height:1.2}
+.bestbet-detail{font-size:14px;color:#d8dee8;font-weight:800;margin-top:6px}
+.bestbet-why{font-size:12px;color:var(--muted);margin-top:4px}
+
 .hours .detail{display:block;color:var(--muted);font-size:13px;font-weight:650;margin-top:4px}
 .updated{font-size:13px;color:var(--muted)}
 .refresh{border:1px solid var(--line);background:var(--card);color:white;border-radius:12px;padding:9px 12px;font-weight:700}
@@ -49,7 +56,8 @@ h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.5px}
     <button class="tab" data-park="ioa">Islands of Adventure</button>
   </div>
 
-  <div id="hours" class="hours">Loading today’s park hours…</div>
+  <div id="bestbet"></div>
+    <div id="hours" class="hours">Loading today’s park hours…</div>
 
   <div class="toolbar">
     <div id="updated" class="updated">Loading live waits…</div>
@@ -255,6 +263,59 @@ function saveTrendSamples(rows, parkKey){
   catch(e) {}
 }
 
+
+function bestBetScore(r, favorite){
+  const wait = standbyWait(r);
+  const t = smartThresholds(r.name);
+  if(wait === null || !t || wait <= 0) return null;
+
+  // Opportunity is primarily "how much better than normal is this ride right now?"
+  // A favorite gets a modest nudge, but cannot overpower a genuinely exceptional deal.
+  const ratio = wait / t.base;
+  let score = (1 - ratio) * 100;
+
+  if(wait <= t.goNow) score += 22;
+  if(favorite) score += 8;
+
+  const trend = trendFor(r);
+  if(trend?.cls === "down") score += 12;
+  if(trend?.cls === "up") score -= 8;
+
+  return {score, wait, base:t.base, ratio, trend};
+}
+
+function renderBestBet(rows, parkKey){
+  const el = document.getElementById("bestbet");
+  if(!el) return;
+
+  const favs = new Set(PARKS[parkKey].favorites.map(norm));
+  const candidates = rows
+    // Hogwarts Express is transportation between parks, not a Best Bet attraction.
+    .filter(r => !norm(r.name).startsWith("hogwarts express"))
+    .map(r => ({r, b:bestBetScore(r, favs.has(norm(r.name)))}))
+    .filter(x => x.b && x.b.ratio <= 0.90)
+    .sort((a,b) => b.b.score - a.b.score);
+
+  if(!candidates.length){
+    el.innerHTML = "";
+    return;
+  }
+
+  const {r,b} = candidates[0];
+  const pct = Math.max(0, Math.round((1 - b.ratio) * 100));
+  const trendText = b.trend
+    ? (b.trend.cls === "down" ? "↓ Falling" : b.trend.cls === "up" ? "↑ Rising" : "→ Steady")
+    : "Trend learning…";
+  const fire = b.ratio <= 0.60 ? "🔥 " : "";
+
+  el.innerHTML = `<div class="bestbet">
+    <div class="bestbet-kicker">🎯 BEST BET RIGHT NOW</div>
+    <div class="bestbet-name">${r.name}</div>
+    <div class="bestbet-detail">${fire}${b.wait} min · ${trendText}</div>
+    <div class="bestbet-why">About ${pct}% better than this ride’s normal wait</div>
+  </div>`;
+}
+
 function rideHTML(r, favorite){
   const s = displayState(r);
   const trend = trendFor(r);
@@ -348,6 +409,7 @@ async function load(){
        <div class="section">ALL OTHER ATTRACTIONS</div>${others.map(r=>rideHTML(r,false)).join("")}`;
 
     document.getElementById("updated").textContent = `${park.name} • ${ageText(freshest(rows))}`;
+    renderBestBet(rows, parkKey);
     saveTrendSamples(rows, parkKey);
   }catch(e){
     document.getElementById("updated").textContent = "Could not update";
